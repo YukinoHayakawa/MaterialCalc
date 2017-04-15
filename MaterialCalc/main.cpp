@@ -15,6 +15,7 @@ typedef std::map<std::string, int> MatSet;
 struct Item
 {
     std::string id;
+    std::string name;
     std::string method; // workbench, blast_furnace, induction_smelter, etc.
     MatSet materials; // item is considered baasic material if this is empty
     int output = 0;
@@ -23,6 +24,7 @@ struct Item
     void serialize(Archive & ar, const unsigned int version)
     {
         ar & BOOST_SERIALIZATION_NVP(id);
+        ar & BOOST_SERIALIZATION_NVP(name);
         ar & BOOST_SERIALIZATION_NVP(method);
         ar & BOOST_SERIALIZATION_NVP(materials);
         ar & BOOST_SERIALIZATION_NVP(output);
@@ -80,14 +82,24 @@ void resolve_dependency(const Item &item, MatSet &accumulation, int amount)
     }
 }
 
+std::string query_item_name(const std::string &id)
+{
+    auto iter = items.find(id);
+    if(iter == items.end())
+    {
+        return "???";
+    }
+    return iter->second.name;
+}
+
 void print_material_set(const MatSet &mat)
 {
-    std::cout << "\nRequired Materials\n==================\n";
+    std::cout << "\n~~~~~~~~ Required Materials ~~~~~~~~\n\n#    ID       Name\n------------------------------------\n" << std::left;
     for(auto &&i : mat)
     {
-        std::cout << std::setw(4) << i.second << " " << i.first << std::endl;
+        std::cout << std::setw(4) << i.second << " " << std::setw(8) << i.first << " " << query_item_name(i.first) << std::endl;
     }
-    std::cout << std::endl;
+    std::cout << std::endl << std::right;
 }
 
 void cmd_query(std::stringstream &parser)
@@ -112,7 +124,7 @@ void cmd_query(std::stringstream &parser)
 void cmd_add(std::stringstream &parser)
 {
     Item building;
-    parser >> building.id >> building.method;
+    parser >> building.id >> building.name >> building.method;
     std::string id = building.id; // we'll move building
 
     std::string matid;
@@ -125,9 +137,9 @@ void cmd_add(std::stringstream &parser)
         {
             parser >> matid >> matnum;
         }
-        catch(std::runtime_error &e)
+        catch(std::runtime_error &)
         {
-            if(!finish) throw; else return;
+            if(!finish) throw; return;
         }
         if(matid == "->") // end of decl
         {
