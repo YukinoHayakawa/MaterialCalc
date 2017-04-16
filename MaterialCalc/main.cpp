@@ -56,6 +56,7 @@ void save_data()
     {
         boost::archive::xml_oarchive oa(ofs);
         oa << BOOST_SERIALIZATION_NVP(items);
+        std::cout << "data saved." << std::endl;
     }
     else
     {
@@ -68,12 +69,18 @@ void resolve_dependency(const Item &item, MatSet &accumulation, int amount)
     // calc how many unit material is need to build item of amount
     int mat_unit = static_cast<int>(std::ceil(static_cast<float>(amount) / item.output));
 
+    if(item.materials.empty()) // basic material
+    {
+        accumulation[item.id] += mat_unit;
+        return;
+    }
+
     for(auto mat = item.materials.begin(); mat != item.materials.end(); ++mat)
     {
         auto iter = items.find(mat->first);
-        if(iter == items.end()) // basic material
+        if(iter == items.end()) // unknown material
         {
-            accumulation[mat->first] += mat->second * mat_unit;
+            accumulation[mat->first] += mat->second * mat_unit; // mat->second: how many mat per unit
         }
         else // recursive resolution
         {
@@ -92,9 +99,9 @@ std::string query_item_name(const std::string &id)
     return iter->second.name;
 }
 
-void print_material_set(const MatSet &mat)
+void print_material_set(const Item &item, const MatSet &mat)
 {
-    std::cout << "\n~~~~~~~~ Required Materials ~~~~~~~~\n\n#    ID       Name\n------------------------------------\n" << std::left;
+    std::cout << "\nMaking " << item.name << " with " << item.method << "\n\n#    ID       Name\n------------------------------------\n" << std::left;
     for(auto &&i : mat)
     {
         std::cout << std::setw(4) << i.second << " " << std::setw(8) << i.first << " " << query_item_name(i.first) << std::endl;
@@ -118,13 +125,13 @@ void cmd_query(std::stringstream &parser)
     std::map<std::string, int> mat;
 
     resolve_dependency(queried, mat, amount);
-    print_material_set(mat);
+    print_material_set(queried, mat);
 }
 
 void cmd_add(std::stringstream &parser)
 {
     Item building;
-    parser >> building.id >> building.name >> building.method;
+    parser >> building.name >> building.id >> building.method;
     std::string id = building.id; // we'll move building
 
     std::string matid;
@@ -151,6 +158,8 @@ void cmd_add(std::stringstream &parser)
                 throw std::runtime_error("item already exist");
             }
             std::cout << "item added" << std::endl;
+
+            print_material_set(r.first->second, r.first->second.materials);
         }
         else
         {
@@ -171,6 +180,18 @@ void cmd_remove(std::stringstream &parser)
     }
     items.erase(iter);
     std::cout << "item removed" << std::endl;
+}
+
+void show_help()
+{
+    std::cout
+        << "add        a <name> <id> <method> [<mat1Id> <mat1Amount>]... -> <outputNum>\n"
+        << "remove     r <id>\n"
+        << "calculate  c <id> <amount>\n"
+        << "save       s\n"
+        << "help       h\n"
+        << "save&quit  q\n"
+        ;
 }
 
 void input_loop()
@@ -195,9 +216,17 @@ void input_loop()
             {
                 cmd_remove(parser);
             }
+            else if(token == "s")
+            {
+                save_data();
+            }
             else if(token == "q")
             {
                 return;
+            }
+            else if(token == "h")
+            {
+                show_help();
             }
             else
             {
