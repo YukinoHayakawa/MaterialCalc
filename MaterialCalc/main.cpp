@@ -64,10 +64,15 @@ void save_data()
     }
 }
 
-void resolve_dependency(const Item &item, MatSet &accumulation, int amount)
+int get_mat_unit_amount(const Item &item, int amount)
 {
     // calc how many unit material is need to build item of amount
-    int mat_unit = static_cast<int>(std::ceil(static_cast<float>(amount) / item.output));
+    return static_cast<int>(std::ceil(static_cast<float>(amount) / item.output));
+}
+
+void resolve_dependency(const Item &item, MatSet &accumulation, int amount)
+{
+    int mat_unit = get_mat_unit_amount(item, amount);
 
     if(item.materials.empty()) // basic material
     {
@@ -109,6 +114,56 @@ void print_material_set(const Item &item, const MatSet &mat)
     std::cout << std::endl << std::right;
 }
 
+// output:
+// prepare ... basic materials
+// build N item A
+// ...
+struct DepTreeNode
+{
+    typedef std::unique_ptr<DepTreeNode> UPtr;
+
+    std::string item_id;
+    int amount, mat_unit_amount;
+    std::map<std::string, UPtr> deps;
+};
+
+DepTreeNode::UPtr build_dependency_tree(const Item &item, int amount)
+{
+    auto root = std::make_unique<DepTreeNode>();
+    root->item_id = item.id;
+    root->amount = amount;
+    root->mat_unit_amount = get_mat_unit_amount(item, amount);
+
+    for(auto &&i : item.materials)
+    {
+        auto lookup = items.find(i.first);
+        if(lookup == items.end())
+        {
+            auto child = std::make_unique<DepTreeNode>();
+            child->item_id = i.first;
+            child->amount = i.second * root->mat_unit_amount;
+            child->mat_unit_amount = child->amount;
+            root->deps.insert(std::make_pair(i.first, std::move(child)));
+        }
+        else
+        {
+            root->deps.insert(std::make_pair(i.first, build_dependency_tree(lookup->second, i.second * root->mat_unit_amount)));
+        }
+    }
+
+    return std::move(root);
+}
+
+void output_dep_tree(DepTreeNode *root, int depth = 0)
+{
+    for(auto i = 0; i < depth; ++i) std::cout << "  ";
+    std::cout << (root->deps.empty() ? "collect " : "make ") << root->amount << " " << root->item_id << " " << query_item_name(root->item_id) << std::endl;
+    for(auto &&i : root->deps)
+    {
+        output_dep_tree(i.second.get(), depth + 1);
+    }
+}
+
 void cmd_query(std::stringstream &parser)
 {
     std::string id;
@@ -126,6 +181,9 @@ void cmd_query(std::stringstream &parser)
 
     resolve_dependency(queried, mat, amount);
     print_material_set(queried, mat);
+
+    auto dep_tree = build_dependency_tree(iter->second, amount);
+    output_dep_tree(dep_tree.get());
 }
 
 void cmd_add(std::stringstream &parser)
